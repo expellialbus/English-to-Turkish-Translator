@@ -3,6 +3,7 @@ import pathlib
 import requests
 import random
 import string
+import re
 
 from tensorflow.keras.layers import TextVectorization
 import tensorflow as tf
@@ -76,12 +77,14 @@ def split_dataset(dataset_path, val_ratio=0.15, test_ratio=0.15):
     """
 
     with open(dataset_path, "r") as dataset:
+
         # last index contains an empty space
         # because '\n' is the last character of sentences
         text_lines = dataset.read().split("\n")[:-1]
 
     text_pairs = list()
     for text_line in text_lines:
+
         # first two elements are english sentence and its corresponding turkish version
         # other remained informations are unnecessary to use
         eng, tur, *_ = text_line.split("\t")
@@ -101,7 +104,7 @@ def split_dataset(dataset_path, val_ratio=0.15, test_ratio=0.15):
     return train_pairs, val_pairs, test_pairs
 
 
-def build_vectoizers(train_pairs, vocab_size, max_length):
+def build_vectorizers(train_pairs, vocab_size, max_length):
     """
     Builds vectorizers on train data
     It will return two vectorizers, one for source sentences (english in this case)
@@ -151,17 +154,22 @@ def build_vectoizers(train_pairs, vocab_size, max_length):
 
         """
 
-        lowercase = tf.strings.lower(input)
-        return tf.strings.regex_replace(lowercase, strip_chars, "")
+        lowercase = tf.strings.lower(input_str)
+
+        # characters should contains escape characters (backslashes)
+        # or else the characters will be treated as a regular expression pattern
+        # and square brackets come from regular expression rules
+        return tf.strings.regex_replace(lowercase, f"[{re.escape(strip_chars)}]", "")
 
     source_vectorizer = TextVectorization(
-        max_tokens=vocab_size, output_mode="int", output_seqeunce_length=max_length
+        max_tokens=vocab_size, output_mode="int", output_sequence_length=max_length
     )
 
     target_vectorizer = TextVectorization(
-        max_token=vocab_size,
+        max_tokens=vocab_size,
         output_mode="int",
-        output_seqeunce_length=max_length + 1,
+        # since the target sequence has to be one step ahead, this one step should be added
+        output_sequence_length=max_length + 1,
         standardize=standardization,
     )
 
@@ -172,3 +180,90 @@ def build_vectoizers(train_pairs, vocab_size, max_length):
     target_vectorizer.adapt(turkish_texts)
 
     return source_vectorizer, target_vectorizer
+
+
+def create_dataset(pairs, vectorizers, batch_size=64, num_parallel_calls=None):
+    """
+    Creates the dataset from passed sentence pairs
+
+    Parameters
+    ----------
+    pairs : nested iterables
+            Collection of source and target sentences
+
+    vectorizers : tuple of TextVectorization object
+                  Two TextVectorization object, one for source sentences and one for target sentences respectively
+
+    batch_size : int, default=64
+                 Batch size of dataset
+
+    num_parallel_calls : int, optional
+                         Number of cores will be used during text vectorization process
+
+    Returns
+    -------
+    CacheDataset, ({
+                    english: (dtype=tf.int64, shape=(None, max_length)),
+                    turkish: (dtype=tf.int64, shape=(None, max_length)
+                   }, turkish: (dtype=tf.int64, shape=(None, max_length)))
+
+    """
+
+    source_vectorizer, target_vectorizer = vectorizers
+
+    def format_dataset(eng, tur):
+        """
+        Format dataset for training
+
+        Parameters
+        ----------
+        eng : numpy.array
+              English sentences
+
+        tur : numpy.array
+              Turkish sentences
+
+
+        Returns
+        -------
+        Dictionary of vectorized source and target sentences, target sentences which one step moved to create labels
+
+        Note
+        ----
+        This function will automatically be called by the map function of the dataset object
+
+        """
+
+        eng = source_vectorizer(eng)
+        tur = target_vectorizer(tur)
+
+        return (
+            {
+                "english": eng,
+                # target sequences' lengths are one token more than source sequences
+                # to make both sentences same length, one token should be ignored
+                # and this cannot be both first token ("[start]") and another token of sentence except last
+                # (the last token may be "[end]" token)
+                "turkish": tur[:, :-1]
+                # again to make both sentences same length, one token should be ignored
+                # but this time (due to this sentence will be used as target)
+                # its "[start]" token should be ignored
+            },
+            tur[:, 1:],
+        )
+
+    eng, tur = zip(*pairs)  # returns two tuple
+
+    # if tuple does not converted to list
+    # rank >= 1 error will be thrown
+    eng = list(eng)
+    tur = list(tur)
+
+    dataset = tf.data.Dataset.from_tensor_slices((eng, tur))
+
+    # format dataset function supports batch operations, so batch dataset could be used
+    # to make processes much faster
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.map(format_dataset, num_parallel_calls=num_parallel_calls)
+
+    return dataset.shuffle(2048).prefetch(1).cache()
