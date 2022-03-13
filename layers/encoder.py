@@ -1,6 +1,12 @@
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Layer, MultiHeadAttention, LayerNormalization, Dense
+from tensorflow.keras.layers import (
+    Layer,
+    MultiHeadAttention,
+    LayerNormalization,
+    Dense,
+    Input,
+)
 
 
 class TransformerEncoder(Layer):
@@ -47,6 +53,9 @@ class TransformerEncoder(Layer):
         # also called as dense projections
         self.dense = Sequential(
             [
+                Input(
+                    shape=(None, embed_dim)
+                ),  # shape=(batch_size * sequence_length (max_length in this case), embed_dim)
                 Dense(dense_units, activation="relu"),
                 # to be able concatenate outputs with inputs
                 # output layer of dense projections should have same size with input dimension
@@ -57,6 +66,8 @@ class TransformerEncoder(Layer):
 
         self.first_layer_norm = LayerNormalization()
         self.second_layer_norm = LayerNormalization()
+
+        self.supports_masking = True
 
         def call(self, inputs, mask=None):
             if mask is not None:
