@@ -1,12 +1,15 @@
 from zipfile import ZipFile
 import pathlib
 import requests
-import random
 import string
 import re
 
 from tensorflow.keras.layers import TextVectorization
 import tensorflow as tf
+import numpy as np
+
+
+tf.keras.utils.set_random_seed(42)
 
 
 def download_dataset(url, save_path=""):
@@ -65,9 +68,9 @@ def split_dataset(dataset_path, val_ratio=0.15, test_ratio=0.15):
 
     Returns
     ------
-    train_set : list of tuples
-    val_set : list of tuples
-    test_set : list of tuples
+    train_pairs : list of tuples
+    val_pairs : list of tuples
+    test_pairs : list of tuples
 
     Note
     ----
@@ -91,14 +94,14 @@ def split_dataset(dataset_path, val_ratio=0.15, test_ratio=0.15):
         tur = "[start] " + tur + " [end]"
         text_pairs.append((eng, tur))
 
-    random.shuffle(text_pairs)
+    np.random.shuffle(text_pairs)
 
     num_samples = len(text_pairs)
     num_val_samples = int(val_ratio * num_samples)
     num_test_samples = int(test_ratio * num_samples)
 
     val_pairs = text_pairs[:num_val_samples]
-    test_pairs = text_pairs[num_val_samples:num_test_samples]
+    test_pairs = text_pairs[num_val_samples : num_val_samples + num_test_samples]
     train_pairs = text_pairs[num_val_samples + num_test_samples :]
 
     return train_pairs, val_pairs, test_pairs
