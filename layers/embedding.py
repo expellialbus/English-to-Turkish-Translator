@@ -2,6 +2,9 @@ import tensorflow as tf
 from tensorflow.keras.layers import Embedding, Layer
 
 
+tf.keras.utils.set_random_seed(42)
+
+
 class PositionalEmbedding(Layer):
     """
     Implementation of both embedding and positional encoding
