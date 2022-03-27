@@ -1,14 +1,16 @@
 import pathlib
 
-import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Dropout
 from tensorflow.keras.models import Model
-import numpy as np
+import pickle
 
 from preprocessing import *
 from layers.embedding import PositionalEmbedding
 from layers.encoder import TransformerEncoder
 from layers.decoder import TransformerDecoder
+
+
+tf.keras.utils.set_random_seed(42)
 
 
 def main():
@@ -20,22 +22,31 @@ def main():
     max_length = 100
     dense_units = 2048
     num_heads = 8
-    n = 3
+    n = 1
     dropout = 0.5
     num_parallel_calls = 4
 
     download_dataset(url, "dataset")
     train_pairs, val_pairs, test_pairs = split_dataset(dataset_path)
+
     source_vectorizer, target_vectorizer = build_vectorizers(
         train_pairs, vocab_size, max_length
     )
+
     train_ds = create_dataset(
         train_pairs,
         (source_vectorizer, target_vectorizer),
         num_parallel_calls=num_parallel_calls,
     )
+
     val_ds = create_dataset(
         val_pairs,
+        (source_vectorizer, target_vectorizer),
+        num_parallel_calls=num_parallel_calls,
+    )
+
+    test_ds = create_dataset(
+        test_pairs,
         (source_vectorizer, target_vectorizer),
         num_parallel_calls=num_parallel_calls,
     )
@@ -48,11 +59,19 @@ def main():
         loss="sparse_categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
     )
 
-    transformer.fit(train_ds, epochs=50, validation_data=val_ds)
+    # model results after last epoch of training
+    # loss: 0.0607 - accuracy: 0.7840 - val_loss: 0.1576 - val_accuracy: 0.6381
+    transformer.fit(train_ds, epochs=10, validation_data=val_ds)
+
+    # model results on test set
+    # loss: 0.1584 - accuracy: 0.6382
+    transformer.evaluate(test_ds)
+
+    transformer.save("model/translator.h5")
 
 
 def get_model(
-    vocab_size, embed_dim, max_length, dense_units, num_heads, n=3, dropout=0.5
+    vocab_size, embed_dim, max_length, dense_units, num_heads, n=1, dropout=0.5
 ):
     """
     Returns the model which built according as parameters
