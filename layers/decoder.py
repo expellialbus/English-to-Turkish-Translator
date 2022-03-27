@@ -9,6 +9,9 @@ from tensorflow.keras.layers import (
 )
 
 
+tf.keras.utils.set_random_seed(42)
+
+
 class TransformerDecoder(Layer):
     """
     Decoder part of and encoder-decoder architecture with attention mechanism
@@ -90,8 +93,8 @@ class TransformerDecoder(Layer):
         # creates mask for target sentences to avoid decoder looking to the "N + 1" token
         # during training, operation ends up like below
         # 1, 0, 0, ... to N
-        # 0, 1, 0, ... to N
-        # 0, 0, 1, ... to N
+        # 1, 2, 0, ... to N
+        # 1, 2, 3, ... to N
         #       .
         #       .
         #       .
@@ -140,8 +143,8 @@ class TransformerDecoder(Layer):
 
         return output
 
-    # To be able save model, get_config method has to be implemented
-    # see https://keras.io/api/models/model_saving_apis/#getconfig-method
+    # To be able save model in HDF5 format, get_config method has to be implemented
+    # https://www.tensorflow.org/tutorials/keras/save_and_load#saving_custom_objects
     def get_config(self):
         config = super().get_config()
 
